@@ -1,0 +1,10 @@
+# Personal build notes — not for the public repo
+PROJECT5-SUMMARY.md
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfvars
+crash.log

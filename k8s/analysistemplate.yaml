@@ -1,0 +1,35 @@
+# Automated canary gate, job-based (no Prometheus dependency — repo stays self-contained).
+# Argo runs this Job at the analysis step; the canary pod is already Ready by then
+# (setWeight completes first). The Job sends a real chat completion through the shared
+# Service and requires HTTP 200 with a non-empty completion. Job succeeds -> rollout
+# proceeds to the pause step. Job fails -> Argo aborts and scales the canary down —
+# the auto-rollback.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: vllm-health
+spec:
+  metrics:
+    - name: chat-completion-check
+      count: 1
+      provider:
+        job:
+          spec:
+            backoffLimit: 2 # retry the probe twice before declaring failure
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: check
+                    image: curlimages/curl:8.13.0
+                    command:
+                      - sh
+                      - -c
+                      - |
+                        set -e
+                        RESP=$(curl -sf --max-time 120 \
+                          http://llama-canary.default.svc.cluster.local:8000/v1/chat/completions \
+                          -H 'Content-Type: application/json' \
+                          -d '{"model":"llama-chat","messages":[{"role":"user","content":"Reply with the single word: healthy"}],"max_tokens":5}')
+                        echo "$RESP"
+                        echo "$RESP" | grep -q '"content"'

@@ -1,0 +1,23 @@
+# Advertises the single physical T4 as 4 schedulable nvidia.com/gpu slots so the
+# stable and canary vLLM pods can share it. Time-slicing gives NO memory isolation —
+# every pod sees all 16 GB, so each vLLM must cap itself via --gpu-memory-utilization.
+#
+# Activate after `terraform apply` (see README):
+#   kubectl apply -f k8s/timeslicing-configmap.yaml
+#   kubectl patch clusterpolicy cluster-policy -n gpu-operator --type merge \
+#     -p '{"spec":{"devicePlugin":{"config":{"name":"time-slicing-config","default":"any"}}}}'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: time-slicing-config
+  namespace: gpu-operator
+data:
+  any: |-
+    version: v1
+    flags:
+      migStrategy: none
+    sharing:
+      timeSlicing:
+        resources:
+          - name: nvidia.com/gpu
+            replicas: 4
