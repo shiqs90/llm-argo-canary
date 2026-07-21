@@ -14,6 +14,20 @@ resource "helm_release" "gpu_operator" {
     value = "true"
   }
 
+  # AKS's base /etc/containerd/config.toml is version 2 and imports drop-ins from
+  # /etc/containerd/conf.d/. By default the toolkit writes its NVIDIA runtime as a
+  # drop-in with a HIGHER config version, and containerd 2.x refuses to start
+  # ("drop-in config version N higher than root config version 2"). Point the toolkit
+  # at the main config so it edits that single file in place — no version mismatch.
+  set {
+    name  = "toolkit.env[0].name"
+    value = "CONTAINERD_CONFIG"
+  }
+  set {
+    name  = "toolkit.env[0].value"
+    value = "/etc/containerd/config.toml"
+  }
+
   # Tolerate the custom GPU taint so the Operator's DaemonSets land on the GPU node.
   set {
     name  = "daemonsets.tolerations[0].key"
