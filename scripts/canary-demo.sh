@@ -13,15 +13,15 @@ set -euo pipefail
 case "${1:-}" in
   --break)
     MODEL="meta-llama/Llama-3.2-3B-Instruc" # typo on purpose: download fails -> pod never Ready -> auto-abort
-    UTIL="0.44"
+    UTIL="0.55"
     ;;
   --reset)
     MODEL="meta-llama/Llama-3.2-1B-Instruct"
-    UTIL="0.28"
+    UTIL="0.25"
     ;;
   *)
     MODEL="meta-llama/Llama-3.2-3B-Instruct"
-    UTIL="0.44" # 3B fp16 weights ~6.4GB — needs a bigger slice of the T4 than the 1B's 0.28
+    UTIL="0.55" # 3B ~6GB weights; a single 3B on the 16GB T4 has ample room at 0.55
     ;;
 esac
 

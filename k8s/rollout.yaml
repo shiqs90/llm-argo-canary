@@ -7,22 +7,30 @@
 # (--served-model-name), so clients never change.
 #
 # MODEL and GPU_UTIL travel together: the 16 GB T4 has no memory isolation under
-# time-slicing, so each version declares its own vLLM memory cap —
-#   1B -> 0.28 (~4.5 GB)   3B -> 0.44 (~7 GB)
-# Canary phase: 1B + 3B ~= 11.5 GB. Fully promoted: 2x 3B ~= 14 GB. Both fit.
+# time-slicing, so each version declares its own vLLM memory cap. With replicas: 1 the
+# steady state is a SINGLE pod, so a canary adds just one temporary pod (surge). The
+# biggest moment is 1B + 3B side by side:
+#   1B -> 0.25 (~4 GB)   3B -> 0.55 (~8.8 GB)   => ~12.8 GB, fits 16 GB with headroom.
+# Promoted state is a single 3B (~8.8 GB). --enforce-eager (no CUDA graphs) is kept as a
+# small KV-cache safety margin on the Turing T4.
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
   name: llama-canary
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: llama-canary
   strategy:
     canary:
+      # replicas: 1, so a canary ADDS one temporary pod beside the live one:
+      # maxSurge 1 (allow +1 pod for the canary) + maxUnavailable 0 (never drop the live
+      # pod). setWeight 50 => live 1B + canary 3B = 2 pods; after promote => a single 3B.
+      maxSurge: 1
+      maxUnavailable: 0
       steps:
-        - setWeight: 50            # 1 stable + 1 canary pod
+        - setWeight: 50            # live 1B + canary 3B, ~50/50
         - analysis:                # automated gate — failure auto-aborts to stable
             templates:
               - templateName: vllm-health
@@ -48,7 +56,7 @@ spec:
             - name: MODEL # patched by scripts/canary-demo.sh to trigger the canary
               value: meta-llama/Llama-3.2-1B-Instruct
             - name: GPU_UTIL # patched together with MODEL (see header comment)
-              value: "0.28"
+              value: "0.25"
             - name: HF_TOKEN # Llama 3.2 is gated; secret created at runtime, never committed
               valueFrom:
                 secretKeyRef:
@@ -59,8 +67,9 @@ spec:
             - --served-model-name=llama-chat
             - --gpu-memory-utilization=$(GPU_UTIL)
             - --dtype=half # T4 is Turing: no bfloat16 support, Llama 3.2 defaults to bf16
+            - --enforce-eager # no CUDA graphs -> a small KV-cache safety margin on the Turing T4
             - --max-model-len=2048
-            - --max-num-seqs=8
+            - --max-num-seqs=4 # modest concurrency; a single 3B has ample KV room
             - --port=8000
           ports:
             - containerPort: 8000

@@ -41,6 +41,13 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   node_count            = 1
   gpu_driver            = "None"
 
+  # Pin to Ubuntu 22.04 (containerd 1.7). On the default 24.04 image (containerd 2.3),
+  # the GPU Operator toolkit writes a version-4 containerd drop-in that AKS's version-2
+  # root config rejects ("drop-in config version 4 higher than root config version 2"),
+  # and containerd fails to start -> node NotReady. containerd 1.7 has no such version
+  # check and accepts the toolkit's config, so the node comes up clean.
+  os_sku = "Ubuntu2204"
+
   node_labels = {
     workload = "gpu"
   }
